@@ -7,7 +7,8 @@ import { clove } from "clove";
 
 const api = clove.create({ baseURL: "https://api.example.com", timeout: 10_000 });
 
-const { data } = await api.get("/users");
+const { data, meta } = await api.get("/users");
+console.log(`Fetched in ${meta.time}ms`);
 ```
 
 ---
@@ -18,6 +19,11 @@ const { data } = await api.get("/users");
 - **Auto-injected plugins** — security, cache, dedup, retry, serializer, and Zod validation are wired in by default
 - **Fully typed** — `ResolvedCloveConfig` guarantees no `undefined` inside the pipeline; per-request overrides are all optional
 - **Schema validation** — pass any Zod-compatible schema and get back a typed, validated response
+- **React hooks** — `useClove` for declarative fetching, `useCloveMutation` for imperative mutations
+- **Progress tracking** — upload and download progress callbacks via `ReadableStream` monitoring
+- **Parallel requests** — `atOnce()` fires multiple requests via `Promise.allSettled()` with typed tuple results
+- **Request cancellation** — native `AbortController` support with automatic timeout management
+- **Security hardening** — SSRF prevention with DNS resolution, protocol enforcement, domain allow/block lists
 - **Dual ESM + CJS** — works in Node.js ≥ 18 and modern browsers
 - **Zero runtime dependencies**
 
@@ -33,7 +39,7 @@ Peer dependencies (both optional):
 
 ```bash
 npm install zod    # for response validation
-npm install react  # for the React integration (Phase 5)
+npm install react  # for the React hooks
 ```
 
 ---
@@ -84,6 +90,8 @@ api.options("/users");
 
 ## Parallel Requests
 
+`atOnce()` fires multiple requests simultaneously using `Promise.allSettled()`:
+
 ```ts
 const results = await api.atOnce([
   { url: "/users" },
@@ -96,6 +104,15 @@ for (const result of results) {
     console.log(result.value.data);
   }
 }
+```
+
+With typed schemas, return types are inferred per-request:
+
+```ts
+const [users, posts] = await api.atOnce([
+  { url: "/users", schema: z.array(UserSchema) },
+  { url: "/posts", schema: z.array(PostSchema) },
+] as const);
 ```
 
 ---
@@ -139,8 +156,8 @@ All plugins are auto-injected and run in priority order:
 
 ```ts
 const api = clove.create({
-  cache: false, // disable caching for this instance
-  retry: false, // disable retry
+  cache: false,    // disable caching for this instance
+  retry: false,    // disable retry
   security: false, // disable security checks
 });
 ```
@@ -149,9 +166,143 @@ const api = clove.create({
 
 ```ts
 await api.post("/webhook", payload, {
-  retry: false, // don't retry this specific request
-  cache: { ttl: 0 }, // bypass cache
+  retry: false,        // don't retry this specific request
+  cache: { ttl: 0 },   // bypass cache
 });
+```
+
+---
+
+## Progress Tracking
+
+Monitor upload and download progress for large transfers:
+
+```ts
+// Download progress
+const { data } = await api.get("/large-file", {
+  responseType: "blob",
+  onDownloadProgress: (progress) => {
+    console.log(`Downloaded: ${progress.loaded} bytes`);
+    if (progress.percentage !== undefined) {
+      console.log(`${progress.percentage}% complete`);
+    }
+  },
+});
+
+// Upload progress
+await api.post("/upload", largePayload, {
+  onUploadProgress: (progress) => {
+    updateProgressBar(progress.percentage ?? 0);
+  },
+});
+```
+
+The `ProgressInfo` object contains:
+
+| Field        | Type                  | Description                                 |
+| ------------ | --------------------- | ------------------------------------------- |
+| `loaded`     | `number`              | Bytes transferred so far                    |
+| `total`      | `number \| undefined` | Total bytes (from `Content-Length`), if known |
+| `percentage` | `number \| undefined` | 0–100, if `total` is known                  |
+
+---
+
+## React Integration
+
+Clove includes first-class React hooks via the `clove/react` entry point.
+
+### Setup
+
+```tsx
+import { clove } from "clove";
+import { CloveProvider } from "clove/react";
+
+const api = clove.create({ baseURL: "/api" });
+
+function App() {
+  return (
+    <CloveProvider client={api}>
+      <MyApp />
+    </CloveProvider>
+  );
+}
+```
+
+### `useClove` — Declarative data fetching
+
+```tsx
+import { useClove } from "clove/react";
+import { z } from "zod";
+
+const UserSchema = z.object({ id: z.number(), name: z.string() });
+
+function UserProfile({ userId }: { userId: number }) {
+  const { data, loading, error, refetch } = useClove(`/users/${userId}`, {
+    schema: UserSchema,
+    refetchInterval: 30_000,       // auto-refresh every 30s
+    keepPreviousData: true,        // show old data while refetching
+  });
+
+  if (loading && !data) return <Spinner />;
+  if (error) return <ErrorMessage error={error} />;
+  if (!data) return null;
+
+  return (
+    <div>
+      <h1>{data.name}</h1>
+      <button onClick={refetch}>Refresh</button>
+    </div>
+  );
+}
+```
+
+**Key behaviors:**
+
+| Feature                 | Description                                                     |
+| ----------------------- | --------------------------------------------------------------- |
+| Auto-fetch on mount     | Fires immediately (disable with `enabled: false`)               |
+| Auto-cancel on unmount  | Aborts in-flight requests to prevent state updates on dead components |
+| Dep-change re-fetch     | Re-fetches when URL or options change, cancels stale requests   |
+| `keepPreviousData`      | Stale-while-revalidate — show old data during re-fetch          |
+| `refetchInterval`       | Automatic polling at a configurable interval                    |
+| `enabled`               | Deferred execution — fires when set to `true` or via `refetch()` |
+
+**Returned state:**
+
+```ts
+const {
+  data,       // T | null
+  error,      // CloveError | null
+  loading,    // boolean
+  meta,       // ResponseMeta | null
+  refetch,    // () => Promise<void>
+  cancel,     // () => void
+  isIdle,     // true before first fetch (enabled: false)
+  isLoading,  // true while fetching
+  isSuccess,  // true after successful fetch
+  isError,    // true after failed fetch
+} = useClove("/endpoint", options);
+```
+
+### `useCloveMutation` — Imperative mutations
+
+```tsx
+import { useCloveMutation } from "clove/react";
+
+function CreateUser() {
+  const { mutate, loading, error } = useCloveMutation("/users", {
+    method: "POST",
+    onSuccess: (user) => toast.success(`Created ${user.name}`),
+    onError: (err) => toast.error(err.message),
+    onSettled: () => queryCache.invalidate("/users"),
+  });
+
+  return (
+    <button onClick={() => mutate({ name: "Jane" })} disabled={loading}>
+      {loading ? "Creating..." : "Create User"}
+    </button>
+  );
+}
 ```
 
 ---
@@ -163,7 +314,7 @@ import type { ClovePlugin } from "clove";
 
 const loggingPlugin: ClovePlugin = {
   name: "logging",
-  priority: 50,
+  priority: 5, // outermost — captures full timing
 
   middleware() {
     return async (ctx, next) => {
@@ -201,12 +352,12 @@ try {
 } catch (error) {
   if (CloveError.isCloveError(error)) {
     switch (error.code) {
-      case "CLOVE_HTTP": // 4xx / 5xx response
-      case "CLOVE_TIMEOUT": // request timed out
-      case "CLOVE_CANCELLED": // aborted via AbortSignal
-      case "CLOVE_NETWORK": // fetch-level network failure
-      case "CLOVE_VALIDATION": // Zod schema rejected the response
-      case "CLOVE_SECURITY": // blocked by security plugin
+      case "CLOVE_HTTP":       // 4xx / 5xx response
+      case "CLOVE_TIMEOUT":    // request timed out
+      case "CLOVE_CANCELLED":  // aborted via AbortSignal
+      case "CLOVE_NETWORK":    // fetch-level network failure
+      case "CLOVE_VALIDATION": // schema rejected the response
+      case "CLOVE_SECURITY":   // blocked by security plugin
     }
   }
 }
@@ -224,6 +375,30 @@ const request = api.get("/slow-endpoint", { signal: controller.signal });
 controller.abort(); // throws CancelledError
 ```
 
+Timeout is built-in — the default is `5000ms`. Set `timeout: 0` to disable.
+
+---
+
+## Cache Control
+
+Access the cache programmatically via the plugin instance:
+
+```ts
+const cachePlugin = api.plugins.get("cache");
+
+// Invalidate a specific entry
+cachePlugin.cache.invalidate(key);
+
+// Invalidate by URL prefix
+cachePlugin.cache.invalidateByPrefix("/api/users");
+
+// Glob-pattern invalidation
+cachePlugin.cache.invalidateByPattern("/api/users/**");
+
+// Clear everything
+cachePlugin.cache.clear();
+```
+
 ---
 
 ## Instance Config Reference
@@ -231,34 +406,46 @@ controller.abort(); // throws CancelledError
 ```ts
 clove.create({
   baseURL: "https://api.example.com",
-  timeout: 5000, // ms, default: 5000
+  timeout: 5000,                       // ms, default: 5000
   headers: { "X-App": "1" },
-  credentials: "include", // default: 'same-origin'
-  responseType: "json", // default: 'json'
+  credentials: "include",              // default: 'same-origin'
+  responseType: "json",                // default: 'json'
 
   retry: {
-    attempts: 3,
-    delay: 300,
-    backoff: "exponential", // or 'linear'
-    jitter: true,
+    attempts: 3,                       // default: 3
+    delay: 300,                        // ms, default: 300
+    backoff: "exponential",            // or 'linear'
+    jitter: true,                      // default: true
     retryOn: [408, 429, 500, 502, 503, 504],
   },
   cache: {
-    ttl: 300_000, // ms, default: 5 minutes
-    maxEntries: 100,
-    methods: ["GET"],
+    ttl: 300_000,                      // ms, default: 5 minutes
+    maxEntries: 100,                   // default: 100
+    methods: ["GET"],                  // default: ['GET']
   },
   dedup: {
-    methods: ["GET", "HEAD"],
+    methods: ["GET", "HEAD"],          // default: ['GET', 'HEAD']
   },
   security: {
-    blockPrivateIPs: true,
-    httpsOnly: false,
+    blockPrivateIPs: true,             // default: true (DNS resolution in Node.js)
+    httpsOnly: false,                  // default: false
     allowedDomains: ["*.example.com"],
-    maxRedirects: 5,
-    maxResponseSize: 10 * 1024 * 1024, // 10MB
+    maxRedirects: 5,                   // default: 5
+    maxResponseSize: 10 * 1024 * 1024, // 10MB, default: Infinity
   },
 });
+```
+
+---
+
+## Package Exports
+
+Clove ships three entry points for optimal tree-shaking:
+
+```ts
+import { clove, CloveClient } from "clove";                // Core
+import { useClove, useCloveMutation } from "clove/react";  // React hooks
+import { createCachePlugin } from "clove/plugins";          // Plugin factories
 ```
 
 ---

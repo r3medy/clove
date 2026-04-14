@@ -1,6 +1,11 @@
 // Clove - Request Execution
 
-import type { MiddlewareContext, CloveResponse, ResolvedCloveConfig } from "./types.js";
+import type {
+  MiddlewareContext,
+  CloveResponse,
+  ResolvedCloveConfig,
+  ProgressCallback,
+} from "./types.js";
 import { CloveError, TimeoutError, CancelledError, NetworkError, HttpError } from "./errors.js";
 import { buildURL } from "../utils/url.js";
 
@@ -40,7 +45,11 @@ export async function executeRequest<T = unknown>(
     // Attach body for non-GET/HEAD methods
     if (config.body !== undefined && config.method !== "GET" && config.method !== "HEAD") {
       const { body, contentType } = serializeBody(config.body);
-      requestInit.body = body;
+
+      // Wrap body with upload progress monitoring if callback is provided
+      requestInit.body = config.onUploadProgress
+        ? wrapBodyWithProgress(body, config.onUploadProgress)
+        : body;
 
       // Only set Content-Type if not already set by user and we have a detected type
       if (contentType && !hasHeader(config.headers, "Content-Type")) {
@@ -55,8 +64,10 @@ export async function executeRequest<T = unknown>(
     meta.end = performance.now();
     meta.time = Math.round((meta.end - meta.start) * 100) / 100;
 
-    // Parse Response Body
-    const data = await parseResponseBody<T>(response, config);
+    // Parse Response Body (with optional download progress monitoring)
+    const data = config.onDownloadProgress
+      ? await parseResponseBodyWithProgress<T>(response, config, config.onDownloadProgress)
+      : await parseResponseBody<T>(response, config);
 
     // Check for HTTP errors
     const cloveResponse: CloveResponse<T> = {
@@ -215,6 +226,75 @@ function serializeBody(body: unknown): { body: BodyInit; contentType: string | n
 }
 
 /**
+ * Wrap a body in a ReadableStream that reports upload progress.
+ * Converts the body to a Uint8Array, then streams it through a
+ * TransformStream that fires the callback as bytes are enqueued.
+ */
+function wrapBodyWithProgress(
+  body: BodyInit,
+  onProgress: ProgressCallback,
+): ReadableStream<Uint8Array> {
+  const bytes = bodyToBytes(body);
+  if (!bytes) {
+    // Can't measure progress for stream types — pass through
+    return body as ReadableStream<Uint8Array>;
+  }
+
+  const total = bytes.byteLength;
+  let loaded = 0;
+
+  return new ReadableStream({
+    start(controller) {
+      // Send in chunks for granular progress reporting
+      const chunkSize = Math.max(1024, Math.floor(total / 100));
+      let offset = 0;
+
+      while (offset < total) {
+        const end = Math.min(offset + chunkSize, total);
+        const chunk = bytes.slice(offset, end);
+        controller.enqueue(new Uint8Array(chunk));
+
+        loaded += chunk.byteLength;
+        onProgress({
+          loaded,
+          total,
+          percentage: Math.round((loaded / total) * 100),
+        });
+
+        offset = end;
+      }
+
+      controller.close();
+    },
+  });
+}
+
+/** Convert a BodyInit to an ArrayBuffer for progress metering. Returns null for streams. */
+function bodyToBytes(body: BodyInit): ArrayBuffer | null {
+  if (typeof body === "string") {
+    return new TextEncoder().encode(body).buffer as ArrayBuffer;
+  }
+  if (body instanceof ArrayBuffer) {
+    return body;
+  }
+  if (ArrayBuffer.isView(body)) {
+    return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer;
+  }
+  if (body instanceof Blob) {
+    // Blob needs async conversion — can't do here, so skip progress for Blob
+    return null;
+  }
+  if (body instanceof URLSearchParams) {
+    return new TextEncoder().encode(body.toString()).buffer as ArrayBuffer;
+  }
+  if (body instanceof FormData) {
+    // FormData is multipart — too complex to serialize here
+    return null;
+  }
+  return null;
+}
+
+/**
  * Parse the response body based on the configured responseType
  * or the Content-Type header.
  */
@@ -259,4 +339,105 @@ async function parseJSON<T>(response: Response): Promise<T> {
   } catch {
     return text as T;
   }
+}
+
+/**
+ * Parse response body while reporting download progress via a ReadableStream.
+ * Reads the response body as a stream of chunks, tracking bytes received.
+ */
+async function parseResponseBodyWithProgress<T>(
+  response: Response,
+  config: ResolvedCloveConfig,
+  onProgress: ProgressCallback,
+): Promise<T> {
+  // No body to track
+  if (response.status === 204 || response.status === 304) {
+    return null as T;
+  }
+
+  // No readable body stream (e.g. opaque response)
+  if (!response.body) {
+    return parseResponseBody<T>(response, config);
+  }
+
+  const contentLength = response.headers.get("content-length");
+  const total = contentLength ? parseInt(contentLength, 10) : undefined;
+  let loaded = 0;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunks.push(value);
+      loaded += value.byteLength;
+
+      onProgress({
+        loaded,
+        total: total && !isNaN(total) ? total : undefined,
+        percentage: total && !isNaN(total) ? Math.round((loaded / total) * 100) : undefined,
+      });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Fire final progress event
+  onProgress({
+    loaded,
+    total: total && !isNaN(total) ? total : loaded,
+    percentage: 100,
+  });
+
+  // Reconstruct the body from collected chunks
+  const fullBody = concatUint8Arrays(chunks);
+
+  // Parse based on responseType
+  switch (config.responseType) {
+    case "json": {
+      const text = new TextDecoder().decode(fullBody);
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as T;
+      }
+    }
+    case "text":
+      return new TextDecoder().decode(fullBody) as T;
+    case "blob": {
+      const buf = fullBody.buffer.slice(
+        fullBody.byteOffset,
+        fullBody.byteOffset + fullBody.byteLength,
+      ) as ArrayBuffer;
+      return new Blob([buf]) as T;
+    }
+    case "arrayBuffer":
+      return fullBody.buffer.slice(
+        fullBody.byteOffset,
+        fullBody.byteOffset + fullBody.byteLength,
+      ) as T;
+    default: {
+      const text = new TextDecoder().decode(fullBody);
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as T;
+      }
+    }
+  }
+}
+
+/** Concatenate an array of Uint8Arrays into a single Uint8Array. */
+function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  const totalLength = arrays.reduce((sum, arr) => sum + arr.byteLength, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.byteLength;
+  }
+  return result;
 }

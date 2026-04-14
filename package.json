@@ -2,6 +2,7 @@
   "name": "clove",
   "version": "0.1.0",
   "description": "A modular, plugin-based fetch API wrapper built on web standards",
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -48,7 +49,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
     "fetch",
@@ -62,7 +64,12 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "jsdom": "^29.0.2",
+    "react": "^19.2.5",
     "tsup": "^8.4.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"

@@ -1,4 +1,4 @@
-// Clove -Client (Main Entry Point)
+// Clove - Client (Main Entry Point)
 
 import type {
   CloveInstanceConfig,
@@ -7,6 +7,7 @@ import type {
   CloveMiddleware,
   ClovePlugin,
   AtOnceRequest,
+  AtOnceResults,
 } from "./types.js";
 import { resolveConfig } from "./config.js";
 import { compose } from "./pipeline.js";
@@ -209,6 +210,8 @@ export class CloveClient {
    * }
    * ```
    */
+  async atOnce<T extends readonly AtOnceRequest[]>(requests: T): Promise<AtOnceResults<T>>;
+  async atOnce(requests: AtOnceRequest[]): Promise<PromiseSettledResult<CloveResponse>[]>;
   async atOnce(requests: AtOnceRequest[]): Promise<PromiseSettledResult<CloveResponse>[]> {
     if (!Array.isArray(requests) || requests.length === 0) {
       throw new Error("atOnce() requires a non-empty array of request descriptors");
@@ -216,18 +219,8 @@ export class CloveClient {
 
     const promises = requests.map((req) =>
       this.request({
-        url: req.url,
+        ...req,
         method: req.method ?? "GET",
-        headers: req.headers,
-        params: req.params,
-        body: req.body,
-        timeout: req.timeout,
-        credentials: req.credentials,
-        responseType: req.responseType,
-        schema: req.schema,
-        retry: req.retry,
-        cache: req.cache,
-        dedup: req.dedup,
       }),
     );
 

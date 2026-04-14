@@ -66,11 +66,24 @@ export function createSecurityPlugin(): ClovePlugin {
 
         if (hostname) {
           // SSRF: Block private/internal IPs
-          if (security.blockPrivateIPs !== false && isPrivateHost(hostname)) {
-            throw new SecurityError(
-              `Request to private/internal address blocked: ${hostname}`,
-              ctx.config,
-            );
+          if (security.blockPrivateIPs !== false) {
+            // First pass: catch literal private hostnames/IPs
+            if (isPrivateHost(hostname)) {
+              throw new SecurityError(
+                `Request to private/internal address blocked: ${hostname}`,
+                ctx.config,
+              );
+            }
+
+            // Second pass (Node.js only): resolve DNS and check the actual IP
+            // This prevents bypasses via domains like localtest.me → 127.0.0.1
+            const resolvedIP = await resolveDNS(hostname);
+            if (resolvedIP && isPrivateHost(resolvedIP)) {
+              throw new SecurityError(
+                `DNS resolved to private/internal address blocked: ${hostname} → ${resolvedIP}`,
+                ctx.config,
+              );
+            }
           }
 
           // Domain whitelist (takes precedence over blacklist)
@@ -108,4 +121,44 @@ export function createSecurityPlugin(): ClovePlugin {
       };
     },
   };
+}
+
+// # DNS Resolution (Node.js only)
+
+/** Cached reference to the Node.js DNS module (lazy-loaded). */
+let dnsModule: { lookup: (hostname: string) => Promise<{ address: string }> } | null | false = null;
+
+/**
+ * Attempt to resolve a hostname to its IP address using Node.js `dns.lookup`.
+ *
+ * - Returns the resolved IP string in Node.js environments.
+ * - Returns `null` in browser environments (DNS resolution happens inside fetch).
+ * - Returns `null` on resolution failure (let fetch handle the error).
+ */
+async function resolveDNS(hostname: string): Promise<string | null> {
+  // Skip if hostname is already an IP address
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) || hostname.includes(":")) {
+    return null;
+  }
+
+  // Lazy-load dns module (only available in Node.js)
+  if (dnsModule === null) {
+    try {
+      const mod = await import(/* webpackIgnore: true */ "node:dns/promises");
+      dnsModule = mod as unknown as typeof dnsModule;
+    } catch {
+      // Not in Node.js — mark as unavailable so we don't retry
+      dnsModule = false;
+    }
+  }
+
+  if (!dnsModule) return null;
+
+  try {
+    const result = await dnsModule.lookup(hostname);
+    return result.address;
+  } catch {
+    // DNS resolution failure — let fetch() handle it naturally
+    return null;
+  }
 }

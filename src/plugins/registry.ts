@@ -42,7 +42,7 @@ export class PluginRegistry {
       this.remove(plugin.name);
     }
 
-    // Set default priority if not specified
+    // Assign default priority if not specified so callers can inspect it
     if (plugin.priority === undefined) {
       plugin.priority = DEFAULT_PRIORITY;
     }

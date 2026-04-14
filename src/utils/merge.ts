@@ -21,6 +21,11 @@ export function deepMerge<T extends Record<string, unknown>>(target: T, source: 
   const result = { ...target };
 
   for (const key of Object.keys(source) as Array<keyof T>) {
+    // Guard against prototype pollution — never copy these keys
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+
     const sourceValue = source[key];
     const targetValue = target[key];
 

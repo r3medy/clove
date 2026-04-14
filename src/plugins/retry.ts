@@ -51,7 +51,7 @@ export function createRetryPlugin(): ClovePlugin {
           retryCondition,
         } = retryConfig;
 
-        let lastError: Error | undefined;
+        let lastError: Error = new Error("Unknown retry error");
 
         for (let attempt = 0; attempt <= attempts; attempt++) {
           try {
@@ -91,7 +91,7 @@ export function createRetryPlugin(): ClovePlugin {
           }
         }
 
-        throw lastError!;
+        throw lastError;
       };
     },
   };

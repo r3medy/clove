@@ -76,6 +76,23 @@ export type CloveHeaders = Partial<Record<HttpHeaderName, string>>;
 /** Response body type hint. */
 export type ResponseType = "json" | "text" | "blob" | "arrayBuffer" | "formData" | "stream";
 
+// # Progress Tracking
+
+/** Progress information for upload/download monitoring. */
+export interface ProgressInfo {
+  /** Number of bytes transferred so far. */
+  loaded: number;
+
+  /** Total number of bytes (from Content-Length), or undefined if unknown. */
+  total: number | undefined;
+
+  /** Percentage complete (0–100), or undefined if total is unknown. */
+  percentage: number | undefined;
+}
+
+/** Callback for upload/download progress events. */
+export type ProgressCallback = (progress: ProgressInfo) => void;
+
 // # Configuration
 
 /**
@@ -149,6 +166,12 @@ export interface CloveRequestConfig {
    */
   schema?: Schema;
 
+  /** Callback for upload progress monitoring. */
+  onUploadProgress?: ProgressCallback;
+
+  /** Callback for download progress monitoring. */
+  onDownloadProgress?: ProgressCallback;
+
   // Per-request plugin overrides
 
   /** Override retry config for this request. Set `false` to skip retry. */
@@ -177,6 +200,8 @@ export interface ResolvedCloveConfig {
   responseType: ResponseType;
   signal?: AbortSignal;
   schema?: Schema;
+  onUploadProgress?: ProgressCallback;
+  onDownloadProgress?: ProgressCallback;
 
   // Resolved plugin configs
   retry: RetryConfig | false;
@@ -383,3 +408,23 @@ export interface AtOnceRequest extends Omit<CloveRequestConfig, "signal"> {
   /** HTTP method. Default: 'GET'. */
   method?: HttpMethod;
 }
+
+/**
+ * Map a tuple of AtOnceRequest descriptors to their resolved response types.
+ * If a request specifies a schema, the response data type is inferred from it.
+ *
+ * @example
+ * ```ts
+ * const [users, posts] = await api.atOnce([
+ *   { url: '/users', schema: z.array(UserSchema) },
+ *   { url: '/posts', schema: z.array(PostSchema) },
+ * ] as const);
+ * // users: PromiseSettledResult<CloveResponse<User[]>>
+ * // posts: PromiseSettledResult<CloveResponse<Post[]>>
+ * ```
+ */
+export type AtOnceResults<T extends readonly AtOnceRequest[]> = {
+  [K in keyof T]: T[K] extends { schema: Schema<infer U> }
+    ? PromiseSettledResult<CloveResponse<U>>
+    : PromiseSettledResult<CloveResponse<unknown>>;
+};

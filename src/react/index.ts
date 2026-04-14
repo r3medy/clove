@@ -1,8 +1,17 @@
-// Clove - React Entry Point (Placeholder for Phase 5)
+// Clove - React Entry Point
 
-// React integration will be implemented in Phase 5:
-// export { CloveProvider } from './provider.js';
-// export { useClove } from './useClove.js';
-// export type { UseCloveOptions, UseCloveResult } from './types.js';
+// Provider
+export { CloveProvider, useCloveClient } from "./provider.js";
 
-export {};
+// Hooks
+export { useClove } from "./useClove.js";
+export { useCloveMutation } from "./useCloveMutation.js";
+
+// Types
+export type {
+  UseCloveOptions,
+  UseCloveResult,
+  UseCloveMutationOptions,
+  UseCloveMutationResult,
+  CloveProviderProps,
+} from "./types.js";

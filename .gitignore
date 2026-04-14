@@ -5,3 +5,6 @@ dist/
 coverage/
 .env
 .env.local
+.agents/
+skills-lock.json
+PLAN.md

@@ -180,6 +180,8 @@ export function resolveConfig(
     responseType: responseType as ResponseType,
     signal: requestConfig.signal,
     schema: requestConfig.schema,
+    onUploadProgress: requestConfig.onUploadProgress,
+    onDownloadProgress: requestConfig.onDownloadProgress,
     retry,
     cache,
     dedup,

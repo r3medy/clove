@@ -59,6 +59,8 @@ export type {
   HttpHeaderName,
   CloveHeaders,
   ResponseType,
+  ProgressInfo,
+  ProgressCallback,
   CloveInstanceConfig,
   CloveRequestConfig,
   ResolvedCloveConfig,
@@ -73,6 +75,7 @@ export type {
   DedupConfig,
   SecurityConfig,
   AtOnceRequest,
+  AtOnceResults,
 } from "./core/types.js";
 
 // Utilities

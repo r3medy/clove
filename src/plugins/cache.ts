@@ -26,8 +26,19 @@ export interface CacheControl {
   /** Invalidate a specific cache entry by key. */
   invalidate(key: string): boolean;
 
-  /** Invalidate all entries matching a URL prefix. */
+  /** Invalidate all entries whose key starts with the given prefix. */
   invalidateByPrefix(prefix: string): number;
+
+  /**
+   * Invalidate all entries matching a glob pattern against the URL in the key.
+   *
+   * Supported patterns:
+   * - `*` matches any single path segment (e.g., `/users/*` matches `/users/123`)
+   * - `**` matches any number of segments (e.g., `/api/**` matches `/api/v1/users/123`)
+   *
+   * @returns Number of entries invalidated.
+   */
+  invalidateByPattern(pattern: string): number;
 
   /** Clear the entire cache. */
   clear(): void;
@@ -37,6 +48,9 @@ export interface CacheControl {
 
   /** Check if a key exists in the cache (may be expired). */
   has(key: string): boolean;
+
+  /** Get all cached keys (useful for debugging). */
+  keys(): string[];
 }
 
 /**
@@ -51,6 +65,7 @@ export interface CacheControl {
  * - Configurable methods to cache (default: GET only)
  * - Custom key generator support
  * - Cache control API for manual invalidation
+ * - Glob-pattern cache invalidation
  *
  * @example
  * ```ts
@@ -93,7 +108,19 @@ export function createCachePlugin(): ClovePlugin & { cache: CacheControl } {
     invalidateByPrefix(prefix: string): number {
       let count = 0;
       for (const key of store.keys()) {
-        if (key.includes(prefix)) {
+        if (key.startsWith(prefix)) {
+          store.delete(key);
+          count++;
+        }
+      }
+      return count;
+    },
+
+    invalidateByPattern(pattern: string): number {
+      const regex = globToRegex(pattern);
+      let count = 0;
+      for (const key of store.keys()) {
+        if (regex.test(key)) {
           store.delete(key);
           count++;
         }
@@ -111,6 +138,10 @@ export function createCachePlugin(): ClovePlugin & { cache: CacheControl } {
 
     has(key: string): boolean {
       return store.has(key);
+    },
+
+    keys(): string[] {
+      return [...store.keys()];
     },
   };
 
@@ -202,4 +233,27 @@ export function createCachePlugin(): ClovePlugin & { cache: CacheControl } {
       store.clear();
     },
   };
+}
+
+/**
+ * Convert a glob pattern to a regular expression.
+ *
+ * - `**` → matches any number of path segments (including none)
+ * - `*` → matches any single path segment (non-slash)
+ * - All other regex special characters are escaped.
+ */
+function globToRegex(pattern: string): RegExp {
+  // Escape regex special characters (except * which we handle)
+  let regex = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+
+  // Replace ** first (greedy multi-segment match)
+  regex = regex.replace(/\*\*/g, "___DOUBLE_STAR___");
+
+  // Replace single * (single segment — no slashes)
+  regex = regex.replace(/\*/g, "[^/]*");
+
+  // Restore double star
+  regex = regex.replace(/___DOUBLE_STAR___/g, ".*");
+
+  return new RegExp(regex);
 }
