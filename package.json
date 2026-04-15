@@ -1,7 +1,8 @@
 {
-  "name": "clove",
+  "name": "@r3medy/clove",
   "version": "0.1.0",
   "description": "A modular, plugin-based fetch API wrapper built on web standards",
+  "repository": "github:r3medy/clove",
   "sideEffects": false,
   "type": "module",
   "main": "./dist/index.cjs",
