@@ -83,14 +83,14 @@ export class PluginRegistry {
 
   /** List all registered plugins, sorted by priority (ascending). */
   list(): ClovePlugin[] {
-    return [...this.plugins.values()].sort(
+    return Array.from(this.plugins.values()).sort(
       (a, b) => (a.priority ?? DEFAULT_PRIORITY) - (b.priority ?? DEFAULT_PRIORITY),
     );
   }
 
   /** Remove all plugins. Calls teardown on each. */
   clear(): void {
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of Array.from(this.plugins.values())) {
       if (plugin.teardown) {
         plugin.teardown();
       }

@@ -3,7 +3,7 @@
 A modular, plugin-based fetch wrapper built on web standards. Think Axios, but with an Express-like middleware pipeline, auto-injected essential plugins, and zero runtime dependencies.
 
 ```ts
-import { clove } from "clove";
+import { clove } from "@r3medy/clove";
 
 const api = clove.create({ baseURL: "https://api.example.com", timeout: 10_000 });
 
@@ -32,7 +32,7 @@ console.log(`Fetched in ${meta.time}ms`);
 ## Installation
 
 ```bash
-npm install clove
+npm install @r3medy/clove
 ```
 
 Peer dependencies (both optional):
@@ -47,7 +47,7 @@ npm install react  # for the React hooks
 ## Quick Start
 
 ```ts
-import { clove } from "clove";
+import { clove } from "@r3medy/clove";
 import { z } from "zod";
 
 const api = clove.create({
@@ -214,8 +214,8 @@ Clove includes first-class React hooks via the `clove/react` entry point.
 ### Setup
 
 ```tsx
-import { clove } from "clove";
-import { CloveProvider } from "clove/react";
+import { clove } from "@r3medy/clove";
+import { CloveProvider } from "@r3medy/clove/react";
 
 const api = clove.create({ baseURL: "/api" });
 
@@ -231,7 +231,7 @@ function App() {
 ### `useClove` — Declarative data fetching
 
 ```tsx
-import { useClove } from "clove/react";
+import { useClove } from "@r3medy/clove/react";
 import { z } from "zod";
 
 const UserSchema = z.object({ id: z.number(), name: z.string() });
@@ -287,7 +287,7 @@ const {
 ### `useCloveMutation` — Imperative mutations
 
 ```tsx
-import { useCloveMutation } from "clove/react";
+import { useCloveMutation } from "@r3medy/clove/react";
 
 function CreateUser() {
   const { mutate, loading, error } = useCloveMutation("/users", {
@@ -310,7 +310,7 @@ function CreateUser() {
 ## Custom Plugins
 
 ```ts
-import type { ClovePlugin } from "clove";
+import type { ClovePlugin } from "@r3medy/clove";
 
 const loggingPlugin: ClovePlugin = {
   name: "logging",
@@ -345,7 +345,7 @@ import {
   NetworkError,
   ValidationError,
   SecurityError,
-} from "clove";
+} from "@r3medy/clove";
 
 try {
   await api.get("/users");
@@ -443,9 +443,9 @@ clove.create({
 Clove ships three entry points for optimal tree-shaking:
 
 ```ts
-import { clove, CloveClient } from "clove";                // Core
-import { useClove, useCloveMutation } from "clove/react";  // React hooks
-import { createCachePlugin } from "clove/plugins";          // Plugin factories
+import { clove, CloveClient } from "@r3medy/clove";                // Core
+import { useClove, useCloveMutation } from "@r3medy/clove/react";  // React hooks
+import { createCachePlugin } from "@r3medy/clove/plugins";          // Plugin factories
 ```
 
 ---

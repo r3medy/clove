@@ -107,7 +107,7 @@ export function createCachePlugin(): ClovePlugin & { cache: CacheControl } {
 
     invalidateByPrefix(prefix: string): number {
       let count = 0;
-      for (const key of store.keys()) {
+      for (const key of Array.from(store.keys())) {
         if (key.startsWith(prefix)) {
           store.delete(key);
           count++;
@@ -119,7 +119,7 @@ export function createCachePlugin(): ClovePlugin & { cache: CacheControl } {
     invalidateByPattern(pattern: string): number {
       const regex = globToRegex(pattern);
       let count = 0;
-      for (const key of store.keys()) {
+      for (const key of Array.from(store.keys())) {
         if (regex.test(key)) {
           store.delete(key);
           count++;
@@ -141,7 +141,7 @@ export function createCachePlugin(): ClovePlugin & { cache: CacheControl } {
     },
 
     keys(): string[] {
-      return [...store.keys()];
+      return Array.from(store.keys());
     },
   };
 

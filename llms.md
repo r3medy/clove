@@ -9,7 +9,7 @@ Clove is a modular, plugin-based fetch API wrapper for TypeScript/JavaScript. It
 ## Installation
 
 ```bash
-npm install clove
+npm install @r3medy/clove
 npm install zod    # optional — for response validation
 npm install react  # optional — for React hooks
 ```
@@ -18,13 +18,13 @@ npm install react  # optional — for React hooks
 
 ```ts
 // Core — client, errors, types, utilities
-import { clove, CloveClient, CloveError, HttpError, TimeoutError, NetworkError, ValidationError, SecurityError, CancelledError } from "clove";
+import { clove, CloveClient, CloveError, HttpError, TimeoutError, NetworkError, ValidationError, SecurityError, CancelledError } from "@r3medy/clove";
 
 // React hooks — requires wrapping app in <CloveProvider>
-import { CloveProvider, useClove, useCloveMutation } from "clove/react";
+import { CloveProvider, useClove, useCloveMutation } from "@r3medy/clove/react";
 
 // Plugin factories — for advanced usage only
-import { createCachePlugin, createRetryPlugin, createSecurityPlugin, createDedupPlugin, createSerializerPlugin, createZodPlugin } from "clove/plugins";
+import { createCachePlugin, createRetryPlugin, createSecurityPlugin, createDedupPlugin, createSerializerPlugin, createZodPlugin } from "@r3medy/clove/plugins";
 ```
 
 ## Creating a Client
@@ -182,7 +182,7 @@ api.use(async (ctx, next) => {
 ## Custom Plugins
 
 ```ts
-import type { ClovePlugin } from "clove";
+import type { ClovePlugin } from "@r3medy/clove";
 
 const myPlugin: ClovePlugin = {
   name: "my-plugin",
@@ -241,8 +241,8 @@ await api.post("/upload", largeBody, {
 ### Provider Setup (required)
 
 ```tsx
-import { clove } from "clove";
-import { CloveProvider } from "clove/react";
+import { clove } from "@r3medy/clove";
+import { CloveProvider } from "@r3medy/clove/react";
 
 const api = clove.create({ baseURL: "/api" });
 
@@ -258,7 +258,7 @@ function App() {
 ### useClove — Declarative Fetching
 
 ```tsx
-import { useClove } from "clove/react";
+import { useClove } from "@r3medy/clove/react";
 
 function UserList() {
   const { data, loading, error, refetch, isIdle, isLoading, isSuccess, isError } = useClove("/users", {
@@ -288,7 +288,7 @@ function UserList() {
 ### useCloveMutation — Imperative Mutations
 
 ```tsx
-import { useCloveMutation } from "clove/react";
+import { useCloveMutation } from "@r3medy/clove/react";
 
 function CreateUser() {
   const { mutate, data, loading, error, reset, isIdle, isLoading, isSuccess, isError } = useCloveMutation("/users", {
